@@ -1,37 +1,39 @@
+const datastore = require('./datastore');
 const express = require('express')
 const bodyParser = require('body-parser')
 const cookieParser = require('cookie-parser')
+const cookieSession = require('cookie-session')
 const port = 8080
 
 const app = express()
 app.use(bodyParser.json())
-// we can pretend storing the user ID in an unencrypted 
-// cookie is secure for the purposes of this demo
-app.use(cookieParser()); 
+app.use(cookieSession({
+	name: 'session',
+	secret: 'secret-key',
+	maxAge: 24 * 60 * 60 * 1000 // 24 hours
+}))
 
-users = {
-	0: {
-		name: 'Luke',
-		admin: true,
-		favoriteColor: 'blue',
-		favoriteFood: 'pizza'
-	},
-	1: {
-		name: 'John',
-		admin: false,
-		favoriteColor: 'green',
-		favoriteFood: 'macaroni'
+app.post('/authn', (req, res) => {
+	console.error('POST /authn');
+	const userId = req.body.userId;
+	const entry = datastore.getUserData(userId);
+	if(!(entry.password === req.body.password)){
+		res.sendStatus(401);
+		return;
 	}
-}
+	req.session.userId = req.body.userId;
+	res.end();
+})
 
 // get user favorites
 app.get('/favorites', (req, res) => {
-	const userId = req.cookies.userId;
-	if(!(userId in users)){
+	console.error('GET /favorites');
+	const userId = req.session.userId;
+	const entry = datastore.getUserData(userId);
+	if(!entry){
 		res.sendStatus(404);
 		return;
 	} 
-	const entry = users[userId];
 	const returnValue = {}
 	for(let key of ['favoriteColor', 'favoriteFood']){
 		returnValue[key] = entry[key];
@@ -41,27 +43,29 @@ app.get('/favorites', (req, res) => {
 
 // update user favorites
 app.post('/favorites', (req, res) => {
-	const userId = req.cookies.userId;
-	if(!(userId in users)){
+	console.error('POST /favorites');
+	const userId = req.session.userId;
+	const entry = datastore.getUserData(userId);
+	if(!entry){
 		res.sendStatus(404);
 		return;
 	} 
-	const entry = users[userId];
-	// update entry with user supplied favorites
 	for(let key of Object.keys(req.body)){
 		entry[key] = req.body[key];
 	}
+	datastore.setUserData(userId, entry);
 	res.sendStatus(200);
 })
 
 // admins only
 app.get('/admin', (req, res) => {
-	const userId = req.cookies.userId;
-	if(!(userId in users)){
+	console.error('GET /admin');
+	const userId = req.session.userId;
+	const entry = datastore.getUserData(userId);
+	if(!entry){
 		res.sendStatus(404);
 		return;
 	} 
-	const entry = users[userId];
 	if(entry.admin){
 		res.sendStatus(200);
 		return;
